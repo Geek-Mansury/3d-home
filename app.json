@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "3D Home",
+    "slug": "3d-home",
+    "scheme": "threedhome",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": false, "bundleIdentifier": "com.mansury.lidar3dhome" },
+    "android": { "package": "com.example.threedhome", "permissions": ["CAMERA"] },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      ["expo-camera", { "cameraPermission": "3D Home uses the camera to capture frames while you scan a room." }]
+    ]
+  }
+}

@@ -1,0 +1,79 @@
+name: Build unsigned iOS app
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: "Release = standalone app (recommended). Debug = dev client (needs your PC running Metro)."
+        default: Release
+        type: choice
+        options: [Release, Debug]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install JS dependencies
+        shell: bash
+        run: |
+          echo "legacy-peer-deps=true" > .npmrc
+          npm install
+
+      - name: Write .env from secret
+        shell: bash
+        run: echo "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}" > .env
+
+      - name: Generate the native iOS project
+        shell: bash
+        run: |
+          npx expo prebuild --platform ios --no-install
+          pod install --project-directory=ios
+
+      - name: Build (no code signing, Sideloadly signs it later)
+        shell: bash
+        run: |
+          CONFIG="${{ inputs.configuration }}"
+          WORKSPACE=$(ls -d ios/*.xcworkspace | head -1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "Workspace: $WORKSPACE  Scheme: $SCHEME  Configuration: $CONFIG"
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" \
+            -configuration "$CONFIG" -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log
+
+      - name: Show compile errors (if any)
+        if: failure()
+        shell: bash
+        run: grep -E "error:" build.log | sort -u | head -60 || true
+
+      - name: Package .ipa
+        shell: bash
+        run: |
+          APP=$(find build/Build/Products -maxdepth 3 -name "*.app" | head -1)
+          echo "App bundle: $APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry 3DHome-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 3DHome-ipa
+          path: 3DHome-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: build.log
